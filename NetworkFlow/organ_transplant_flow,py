@@ -1,0 +1,322 @@
+"""
+Problem 1: Organ Transplant Matching Network - Network Flow Solution
+====================================================================
+
+Real Problem: Maximizing successful organ transplants with compatibility constraints
+
+This implementation includes:
+1. Problem abstraction to bipartite matching with medical constraints
+2. Reduction to Max-Flow using Ford-Fulkerson with Edmonds-Karp (BFS)
+3. Complete algorithm with polynomial time complexity O(VE^2)
+"""
+
+from collections import deque, defaultdict
+import time
+import random
+import matplotlib.pyplot as plt
+
+class OrganTransplantNetworkFlow:
+    """
+    Real Problem: Organ Transplant Matching
+    
+    Given:
+    - N donors, each with blood type, tissue type, and available organs
+    - M recipients (patients), each needing specific organ with blood/tissue compatibility
+    - Medical urgency scores for recipients
+    - Match donors to recipients respecting compatibility constraints
+    
+    Abstraction: Bipartite graph with capacities and constraints
+    - Donors on left, Recipients on right
+    - Edge exists if donor-recipient pair is medically compatible
+    - Edge capacity = 1 (one organ per donor-recipient pair)
+    - Donor node has capacity = number of available organs
+    
+    Reduction to Network Flow:
+    - Source (s) connects to all donors with capacity = donor's available organs
+    - Donors connect to compatible recipients with capacity = 1
+    - Recipients connect to sink (t) with capacity = 1 (each needs one organ)
+    - Maximum flow = maximum number of successful transplants
+    """
+    
+    def __init__(self, donors, recipients):
+        """
+        donors: list of (num_organs, blood_type, tissue_markers)
+        recipients: list of (blood_type_compatible, tissue_markers, urgency)
+        """
+        self.donors = donors
+        self.recipients = recipients
+        self.n_donors = len(donors)
+        self.n_recipients = len(recipients)
+        
+        # Node indices: 0=source, 1..n_donors=donors, 
+        # n_donors+1..n_donors+n_recipients=recipients, last=sink
+        self.source = 0
+        self.sink = self.n_donors + self.n_recipients + 1
+        self.total_nodes = self.n_donors + self.n_recipients + 2
+        
+        # Build flow network
+        self.graph = defaultdict(dict)
+        self._build_network()
+    
+    def _check_compatibility(self, donor_blood, donor_tissue, recip_blood_compat, recip_tissue):
+        """
+        Check if donor and recipient are compatible
+        Blood type compatibility (simplified):
+        - O can donate to anyone
+        - A can donate to A, AB
+        - B can donate to B, AB
+        - AB can donate to AB only
+        
+        Tissue markers: at least 50% match required
+        """
+        # Blood type compatibility
+        blood_compatible = donor_blood in recip_blood_compat
+        
+        # Tissue marker compatibility (simplified: set intersection)
+        if len(donor_tissue) == 0 or len(recip_tissue) == 0:
+            tissue_compatible = True
+        else:
+            match_count = len(donor_tissue & recip_tissue)
+            tissue_compatible = match_count >= len(recip_tissue) * 0.5
+        
+        return blood_compatible and tissue_compatible
+    
+    def _build_network(self):
+        """Construct the flow network from transplant matching problem"""
+        # Source to donors (capacity = number of available organs)
+        for i, (num_organs, blood_type, tissue) in enumerate(self.donors):
+            donor_node = i + 1
+            self.graph[self.source][donor_node] = num_organs
+        
+        # Donors to recipients (if medically compatible)
+        for i, (num_organs, d_blood, d_tissue) in enumerate(self.donors):
+            donor_node = i + 1
+            for j, (r_blood_compat, r_tissue, urgency) in enumerate(self.recipients):
+                recipient_node = self.n_donors + j + 1
+                if self._check_compatibility(d_blood, d_tissue, r_blood_compat, r_tissue):
+                    # Edge capacity = 1 (one organ per match)
+                    self.graph[donor_node][recipient_node] = 1
+        
+        # Recipients to sink (capacity = 1, each recipient needs one organ)
+        for j, (r_blood, r_tissue, urgency) in enumerate(self.recipients):
+            recipient_node = self.n_donors + j + 1
+            self.graph[recipient_node][self.sink] = 1
+    
+    def bfs(self, residual_graph, parent):
+        """
+        Breadth-First Search to find augmenting path
+        Returns True if path exists from source to sink
+        """
+        visited = set([self.source])
+        queue = deque([self.source])
+        
+        while queue:
+            u = queue.popleft()
+            
+            for v in residual_graph.get(u, {}):
+                if v not in visited and residual_graph[u][v] > 0:
+                    visited.add(v)
+                    parent[v] = u
+                    if v == self.sink:
+                        return True
+                    queue.append(v)
+        
+        return False
+    
+    def ford_fulkerson_edmonds_karp(self):
+        """
+        Ford-Fulkerson algorithm using Edmonds-Karp (BFS for augmenting paths)
+        Time Complexity: O(VE^2) where V = nodes, E = edges
+        
+        Returns: (max_flow_value, matching_assignments)
+        """
+        # Create residual graph (copy of capacity graph)
+        residual = defaultdict(dict)
+        for u in self.graph:
+            for v in self.graph[u]:
+                residual[u][v] = self.graph[u][v]
+                if v not in residual:
+                    residual[v] = {}
+                if u not in residual[v]:
+                    residual[v][u] = 0
+        
+        parent = {}
+        max_flow = 0
+        iterations = 0
+        
+        # While there exists augmenting path from source to sink
+        while self.bfs(residual, parent):
+            iterations += 1
+            
+            # Find minimum capacity along the path
+            path_flow = float('inf')
+            v = self.sink
+            while v != self.source:
+                u = parent[v]
+                path_flow = min(path_flow, residual[u][v])
+                v = u
+            
+            # Update residual capacities
+            v = self.sink
+            while v != self.source:
+                u = parent[v]
+                residual[u][v] -= path_flow
+                residual[v][u] += path_flow
+                v = u
+            
+            max_flow += path_flow
+            parent = {}
+        
+        # Extract matching (donor -> recipient)
+        matches = []
+        for i in range(self.n_donors):
+            donor_node = i + 1
+            for j in range(self.n_recipients):
+                recipient_node = self.n_donors + j + 1
+                if recipient_node in self.graph.get(donor_node, {}):
+                    # Flow on edge = original capacity - residual capacity
+                    original_cap = self.graph[donor_node][recipient_node]
+                    residual_cap = residual.get(donor_node, {}).get(recipient_node, 0)
+                    flow = original_cap - residual_cap
+                    if flow > 0:
+                        matches.append((i, j))
+        
+        return max_flow, matches, iterations
+
+
+def generate_transplant_case(n_donors, n_recipients):
+    """Generate random transplant matching case"""
+    blood_types = ['O', 'A', 'B', 'AB']
+    
+    # Blood type compatibility table
+    compat = {
+        'O': ['O', 'A', 'B', 'AB'],
+        'A': ['A', 'AB'],
+        'B': ['B', 'AB'],
+        'AB': ['AB']
+    }
+    
+    # Tissue markers (simplified as HLA markers)
+    all_markers = [f"HLA-{i}" for i in range(10)]
+    
+    donors = []
+    for _ in range(n_donors):
+        num_organs = random.randint(1, 2)  # Most donors have 1-2 available organs
+        blood = random.choice(blood_types)
+        tissue = set(random.sample(all_markers, random.randint(3, 6)))
+        donors.append((num_organs, blood, tissue))
+    
+    recipients = []
+    for _ in range(n_recipients):
+        # Compatible blood types based on recipient's blood type
+        recipient_blood = random.choice(blood_types)
+        # Recipients can receive from compatible donors
+        if recipient_blood == 'O':
+            blood_compatible = ['O']
+        elif recipient_blood == 'A':
+            blood_compatible = ['O', 'A']
+        elif recipient_blood == 'B':
+            blood_compatible = ['O', 'B']
+        else:  # AB
+            blood_compatible = ['O', 'A', 'B', 'AB']
+        
+        tissue = set(random.sample(all_markers, random.randint(3, 5)))
+        urgency = random.randint(1, 10)
+        recipients.append((blood_compatible, tissue, urgency))
+    
+    return donors, recipients
+
+
+def run_experiment(max_size=50, step=5):
+    """Run experiments to verify O(VE^2) complexity"""
+    sizes = list(range(5, max_size + 1, step))
+    times = []
+    theoretical = []
+    
+    print("Running experiments...")
+    for n in sizes:
+        donors, recipients = generate_transplant_case(n, n)
+        
+        start = time.time()
+        solver = OrganTransplantNetworkFlow(donors, recipients)
+        max_flow, matches, iters = solver.ford_fulkerson_edmonds_karp()
+        elapsed = time.time() - start
+        
+        times.append(elapsed)
+        V = n * 2 + 2  # donors + recipients + source + sink
+        E = n * 2 + n * n  # rough estimate
+        theoretical.append((V * E * E) / 1e9)  # Normalized
+        
+        print(f"n={n}: {elapsed:.4f}s, transplants={max_flow}, iterations={iters}")
+    
+    return sizes, times, theoretical
+
+
+if __name__ == "__main__":
+    # Example test case
+    print("=" * 70)
+    print("EXAMPLE: Organ Transplant Matching Problem")
+    print("=" * 70)
+    
+    # 4 donors with blood types and tissue markers
+    donors = [
+        (2, 'O', {'HLA-1', 'HLA-2', 'HLA-5'}),      # Donor 0: Universal, 2 organs
+        (1, 'A', {'HLA-2', 'HLA-3', 'HLA-7'}),      # Donor 1: Type A, 1 organ
+        (1, 'B', {'HLA-1', 'HLA-4', 'HLA-6'}),      # Donor 2: Type B, 1 organ
+        (1, 'AB', {'HLA-3', 'HLA-5', 'HLA-8'})      # Donor 3: Type AB, 1 organ
+    ]
+    
+    # 5 recipients with compatible blood types and tissue markers
+    recipients = [
+        (['O', 'A'], {'HLA-1', 'HLA-2'}, 9),        # Recipient 0: Type A, urgent
+        (['O', 'B'], {'HLA-1', 'HLA-4'}, 7),        # Recipient 1: Type B
+        (['O'], {'HLA-5'}, 8),                      # Recipient 2: Type O, urgent
+        (['O', 'A', 'B', 'AB'], {'HLA-3', 'HLA-5'}, 6),  # Recipient 3: Type AB
+        (['O', 'A'], {'HLA-2', 'HLA-7'}, 5)         # Recipient 4: Type A
+    ]
+    
+    print("\nDonor Information:")
+    for i, (organs, blood, tissue) in enumerate(donors):
+        print(f"  Donor {i}: Blood={blood}, Organs={organs}, Tissue={tissue}")
+    
+    print("\nRecipient Information:")
+    for i, (blood_compat, tissue, urgency) in enumerate(recipients):
+        print(f"  Recipient {i}: Compatible={blood_compat}, Tissue={tissue}, Urgency={urgency}")
+    
+    solver = OrganTransplantNetworkFlow(donors, recipients)
+    max_flow, matches, iterations = solver.ford_fulkerson_edmonds_karp()
+    
+    print(f"\n{'='*70}")
+    print(f"Maximum Successful Transplants: {max_flow}")
+    print(f"Algorithm Iterations: {iterations}")
+    print(f"\nOptimal Matching:")
+    for donor_id, recipient_id in matches:
+        d_organs, d_blood, d_tissue = donors[donor_id]
+        r_compat, r_tissue, r_urgency = recipients[recipient_id]
+        print(f"  Donor {donor_id} (Blood: {d_blood}) → Recipient {recipient_id} (Urgency: {r_urgency})")
+    
+    print("\n" + "=" * 70)
+    print("RUNNING PERFORMANCE EXPERIMENTS")
+    print("=" * 70)
+    
+    sizes, times, theoretical = run_experiment(max_size=40, step=5)
+    
+    # Plot results
+    plt.figure(figsize=(10, 6))
+    plt.plot(sizes, times, 'bo-', label='Actual Runtime', linewidth=2, markersize=6)
+    
+    # Normalize theoretical to match scale
+    scale = max(times) / max(theoretical) if max(theoretical) > 0 else 1
+    theoretical_scaled = [t * scale for t in theoretical]
+    plt.plot(sizes, theoretical_scaled, 'r--', label='O(VE²) (scaled)', linewidth=2)
+    
+    plt.xlabel('Problem Size (n donors, n recipients)', fontsize=12)
+    plt.ylabel('Time (seconds)', fontsize=12)
+    plt.title('Organ Transplant Network Flow: Empirical vs Theoretical Complexity', fontsize=14)
+    plt.legend(fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('network_flow_performance.png', dpi=300, bbox_inches='tight')
+    print("\nPerformance graph saved as 'network_flow_performance.png'")
+    
+    plt.show()
