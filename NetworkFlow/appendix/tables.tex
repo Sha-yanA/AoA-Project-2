@@ -1,0 +1,59 @@
+% Run `python benchmark.py` from within NetworkFlow folder before including these tables.
+
+\begin{table}[H]
+  \centering
+  \caption{Network flow runtime (expected O(VE²))}
+  \label{tab:nf-runtime}
+  \pgfplotstabletypeset[
+    col sep=comma,
+    header=true,
+    string type,
+    columns={n,seconds},
+    columns/n/.style={column name={$n$}},
+    columns/seconds/.style={column name={seconds}}
+  ]{NetworkFlow/results/times.csv}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{Successful transplants by network size}
+  \label{tab:nf-transplants}
+  \pgfplotstabletypeset[
+    col sep=comma,
+    header=true,
+    string type,
+    columns={n,successful},
+    columns/n/.style={column name={$n$}},
+    columns/successful/.style={column name={transplants}}
+  ]{NetworkFlow/results/transplants.csv}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{Algorithm iterations (augmenting paths)}
+  \label{tab:nf-iterations}
+  \pgfplotstabletypeset[
+    col sep=comma,
+    header=true,
+    string type,
+    columns={n,iterations},
+    columns/n/.style={column name={$n$}},
+    columns/iterations/.style={column name={iterations}}
+  ]{NetworkFlow/results/iterations.csv}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{Compatibility analysis}
+  \label{tab:nf-compatibility}
+  \pgfplotstabletypeset[
+    col sep=comma,
+    header=true,
+    string type,
+    columns={pattern,recipients,successful,success rate},
+    columns/pattern/.style={column name={pattern}},
+    columns/recipients/.style={column name={recipients}},
+    columns/successful/.style={column name={successful}},
+    columns/success rate/.style={column name={success rate}}
+  ]{NetworkFlow/results/compatibility.csv}
+\end{table}

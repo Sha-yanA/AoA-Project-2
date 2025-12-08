@@ -1,0 +1,4 @@
+pattern,recipients,successful,success rate
+uniform distribution,30,30,100.00%
+realistic distribution,30,28,93.33%
+rare type dominant,30,29,96.67%
