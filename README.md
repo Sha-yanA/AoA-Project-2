@@ -259,7 +259,7 @@ Possible future work:
 ## Authors
 
 - Shayan Ahmed - shayanahmed@ufl.edu
-- Sanjith Devineni@ufl.edu - sdevineni@ufl.edu
+- Sanjith Devineni - sdevineni@ufl.edu
 
 ## Course
 
